@@ -45,6 +45,7 @@ def ising(n, m, beta, J, B, S0):
         if j<m-1:
             dE = dE + S[i,j+1]
         dE = 2*S[i,j]*(J*dE + B)
+        
         # ACCEPT-REJECT STEP
         alpha = np.min([np.exp(-dE*beta),1])
         U = np.random.random()
