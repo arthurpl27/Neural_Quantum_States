@@ -1,5 +1,5 @@
 # ===========================================================================================================
-#           This code has been written with the help of an (empty) notebook and can be found
+#           This code has been written with the help of an (empty) notebook that can be found
 #                                    via the following citation:
 #         Filippo Vicentini, VMC-from-scratch: Finding Ground-States, (2024), GitHub repository,
 #      https://github.com/PhilipVinc/Lectures/blob/main/2404_ICTP/1-vmc-from-scratch-nosolution.ipynb
