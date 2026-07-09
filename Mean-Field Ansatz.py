@@ -33,7 +33,7 @@ print("Number of edges:", g.n_edges)
 print("List of edges:", g.edges())    # start and end node
 print("------------------------------------------------------------------------------------")
 
-#g.draw()
+g.draw()
 
 # ============================================================
 #               CONSTRUCTION OF THE HAMILTONIAN
