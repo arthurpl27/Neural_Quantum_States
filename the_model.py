@@ -2,117 +2,109 @@ import numpy as np
 import netket as nk
 
 
-def build_ising_model(
-    h=1.0,
-    J=1.0,
+def build_model(
+    h=1,
+    J=1,
     L=4,
-    pbc=True,
+    seed=0,
+    N_chains=20,
     compute_ground_state=True,
     verbose=False,
 ):
-    """
-    Build a transverse-field Ising model on a 2D L x L periodic lattice.
+    # ============================================================
+    #                       PARAMETERS
+    # ============================================================
 
-    Parameters
-    ----------
-    h : float
-        Transverse-field strength.
-    J : float
-        Interaction strength.
-    L : int
-        Linear size of the lattice.
-    pbc : bool
-        Whether to use periodic boundary conditions.
-    compute_ground_state : bool
-        Whether to compute the exact ground-state energy and vector.
-    verbose : bool
-        Whether to print model information.
-
-    Returns
-    -------
-    dict
-        Dictionary containing the graph, Hilbert space, Hamiltonian,
-        JAX Hamiltonian, sparse Hamiltonian, and optionally the ground state.
-    """
-
-    # ------------------------------------------------------------------
-    # Graph
-    # ------------------------------------------------------------------
-    graph = nk.graph.Hypercube(
+    g = nk.graph.Hypercube(
         length=L,
         n_dim=2,
-        pbc=pbc,
+        pbc=True,
     )
 
     if verbose:
-        print("-" * 80)
+        print("------------------------------------------------------------------------------------")
         print("================ PARAMETERS ================")
-        print("Number of sites:", graph.n_nodes)
-        print("List of sites:", list(graph.nodes()))
-        print("Number of edges:", graph.n_edges)
-        print("List of edges:", list(graph.edges()))
-        print("-" * 80)
+        print("Number of sites:", g.n_nodes)
+        print("List of sites:", [node for node in g.nodes()])
+        print("Number of edges:", g.n_edges)
+        print("List of edges:", g.edges())
+        print("------------------------------------------------------------------------------------")
 
-    # ------------------------------------------------------------------
-    # Hilbert space
-    # ------------------------------------------------------------------
-    hilbert_space = nk.hilbert.Spin(
+    # ============================================================
+    #               CONSTRUCTION OF THE HAMILTONIAN
+    # ============================================================
+
+    # Define Hilbert space based on this graph
+    hi = nk.hilbert.Spin(
         s=1 / 2,
-        N=graph.n_nodes,
+        N=g.n_nodes,
     )
 
-    # ------------------------------------------------------------------
-    # Hamiltonian
-    #
-    # H = -h sum_i sigma_x(i)
-    #     + J sum_<i,j> sigma_z(i) sigma_z(j)
-    # ------------------------------------------------------------------
-    sigma_x = [
-        nk.operator.spin.sigmax(hilbert_space, site)
-        for site in graph.nodes()
-    ]
+    sigma_x = []
+    sigma_zz = []
 
-    sigma_zz = [
-        nk.operator.spin.sigmaz(hilbert_space, i)
-        @ nk.operator.spin.sigmaz(hilbert_space, j)
-        for i, j in graph.edges()
-    ]
+    for site in g.nodes():
+        sigma_x.append(
+            nk.operator.spin.sigmax(hi, site)
+        )
+
+    for (i, j) in g.edges():
+        sigma_zz.append(
+            nk.operator.spin.sigmaz(hi, i)
+            @ nk.operator.spin.sigmaz(hi, j)
+        )
 
     hamiltonian = -h * np.sum(sigma_x) + J * np.sum(sigma_zz)
 
-    # Other representations
-    hamiltonian_jax = hamiltonian.to_pauli_strings().to_jax_operator()
+    hamiltonian_jax = (
+        hamiltonian
+        .to_pauli_strings()
+        .to_jax_operator()
+    )
+
     hamiltonian_sparse = hamiltonian.to_sparse()
-
-    # ------------------------------------------------------------------
-    # Exact ground state
-    # ------------------------------------------------------------------
-    ground_state_energy = None
-    ground_state = None
-
-    if compute_ground_state:
-        ground_state_energy, ground_state = nk.exact.lanczos_ed(
-            hamiltonian,
-            compute_eigenvectors=True,
-        )
 
     if verbose:
         print("================ HAMILTONIAN ================")
         print(hamiltonian)
-        print("-" * 80)
+        print("------------------------------------------------------------------------------------")
 
-        if compute_ground_state:
-            print("================ GROUND STATE ================")
-            print("Ground state energy:", ground_state_energy)
-            print("Ground state:", ground_state)
-            print("-" * 80)
+        print("================ JAX HAMILTONIAN ================")
+        print(hamiltonian_jax)
+        print("------------------------------------------------------------------------------------")
+
+    # ============================================================
+    #       COMPUTE EXACT ENERGY/STATE OF THE GROUND STATE
+    # ============================================================
+
+    e_gs = None
+    psi_gs = None
+
+    if compute_ground_state:
+        if verbose:
+            print("================ GROUND STATE ENERGY & EIGENVECTOR ================")
+
+        e_gs, psi_gs = nk.exact.lanczos_ed(
+            hamiltonian,
+            compute_eigenvectors=True,
+        )
+
+        if verbose:
+            print("Ground state energy:", e_gs)
+            print("Ground state:", psi_gs)
+            print("------------------------------------------------------------------------------------")
 
     return {
-        "graph": graph,
-        "hilbert_space": hilbert_space,
+        "g": g,
+        "hi": hi,
         "hamiltonian": hamiltonian,
         "hamiltonian_jax": hamiltonian_jax,
         "hamiltonian_sparse": hamiltonian_sparse,
-        "ground_state_energy": ground_state_energy,
-        "ground_state": ground_state,
+        "e_gs": e_gs,
+        "psi_gs": psi_gs,
+        "h": h,
+        "J": J,
+        "L": L,
+        "seed": seed,
+        "N_chains": N_chains,
     }
