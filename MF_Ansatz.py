@@ -18,61 +18,27 @@ import flax.linen as nn    # Flax: framework to define models using Jax
 from scipy.sparse.linalg import eigsh
 from functools import partial
 
-# Parameters
-h = 1
-J = 1
-L = 4
+from the_model import build_model
+
+N_chains = 20
 seed = 0
-g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
 
-print("------------------------------------------------------------------------------------")
-print("================ PARAMETERS ================")
-print("Number of sites:", g.n_nodes)
-print("List of sites:", [node for node in g.nodes()])
-print("Number of edges:", g.n_edges)
-print("List of edges:", g.edges())    # start and end node
-print("------------------------------------------------------------------------------------")
+model = build_model(
+    h=1,
+    J=1,
+    L=4,
+    seed=0,
+    N_chains=N_chains,
+    compute_ground_state=True,
+    verbose=True)
 
-g.draw()
-
-# ============================================================
-#               CONSTRUCTION OF THE HAMILTONIAN
-# ============================================================
-
-# Define Hilbert space based on this graph + fixed total magnetization of zero
-hi = nk.hilbert.Spin(s=1/2, N=g.n_nodes)
-
-# Create empty operator
-hamiltonian = nk.operator.LocalOperator(hi)
-
-sigma_x = []
-sigma_zz = []
-for site in g.nodes():
-    sigma_x.append(nk.operator.spin.sigmax(hi,site))
-
-for (i,j) in g.edges():
-    sigma_zz.append(nk.operator.spin.sigmaz(hi, i) @ nk.operator.spin.sigmaz(hi, j))
-
-hamiltonian = -h * np.sum(sigma_x) + J * np.sum(sigma_zz)
-hamiltonian_jax = hamiltonian.to_pauli_strings().to_jax_operator()
-print("================ HAMILTONIAN ================")
-print(hamiltonian)
-print("------------------------------------------------------------------------------------")
-print("================ JAX HAMILTONIAN ================")
-print(hamiltonian_jax)
-print("------------------------------------------------------------------------------------")
-
-# ============================================================
-#       COMPUTE EXACT ENERGY/STATE OF THE GROUND STATE
-# ============================================================
-
-print("================ GROUND STATE ENERGY & EIGENVECTOR ================")
-
-e_gs, psi_gs = nk.exact.lanczos_ed(hamiltonian, compute_eigenvectors = True)
-
-print("Ground state energy:", e_gs)
-print("Ground state:", psi_gs)
-print("------------------------------------------------------------------------------------")
+g = model["g"]
+hi = model["hi"]
+hamiltonian = model["hamiltonian"]
+hamiltonian_jax = model["hamiltonian_jax"]
+hamiltonian_sparse = model["hamiltonian_sparse"]
+e_gs = model["e_gs"]
+psi_gs = model["psi_gs"]
 
 # Flax model
 class MF(nn.Module):
