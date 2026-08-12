@@ -39,6 +39,8 @@ hamiltonian_jax = model["hamiltonian_jax"]
 hamiltonian_sparse = model["hamiltonian_sparse"]
 e_gs = model["e_gs"]
 psi_gs = model["psi_gs"]
+# Draw the graph (uncomment line below)
+# g.draw()
 
 # Flax models
 class Jastrow(nn.Module):
