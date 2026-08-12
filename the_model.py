@@ -85,5 +85,4 @@ def build_model(
         "J": J,
         "L": L,
         "seed": seed,
-        "N_chains": N_chains,
-    }
+        "N_chains": N_chains}
