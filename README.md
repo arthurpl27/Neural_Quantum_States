@@ -15,4 +15,4 @@ This repository contains the following files:
 
 (6) NQS_Optimizers : An implementation of VMC-NQS to see the effect of SR on different optimizers (SGD, Adam, RMSProp, Momentum). 
 
-(7) FNN_Models : A comparison of different feedforward neural networks composed of 1L-32N, 2L-32N, 2L-64N, 3L-64N and 3L-128N (where L = layers and N = neurons) with a ReLU activation function and SGD + SR update.
+(7) FNN_Models : A comparison of the effect of different feedforward neural networks on the energy composed of 1L-32N, 2L-32N, 2L-64N, 3L-64N and 3L-128N (where L = layers and N = neurons) with a ReLU activation function and SGD + SR update.
