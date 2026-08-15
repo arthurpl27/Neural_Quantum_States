@@ -13,4 +13,6 @@ This repository contains the following files:
 
 (5) FNN_NQS : An implementation of a neural quantum state with a feedforward neural network on a (4 x 4) Transverse Field Ising Model based on 16 parameters (trainable weights). Implementation in pure NetKet of the full algorithm for ground-state energy estimation via NQS with a stochastic reconfiguration update. The present code outputs a comparison of the energy, energy errors and relative energy errors for a Mean-Field ansatz, Jastrow ansatz and the feedforward network. This code can easily be modified to study the performance of the algorithm by tuning the parameters of the system or by changing some of the tools currently implemented (sampler, update rule, ...).    
 
-(6) NQS_Optimizers : An implementation of VMC-NQS to see the effect of SR on different optimizers (SGD, Adam, RMSProp, Momentum).  
+(6) NQS_Optimizers : An implementation of VMC-NQS to see the effect of SR on different optimizers (SGD, Adam, RMSProp, Momentum). 
+
+(7) FNN_Models : A comparison of different feedforward neural networks composed of 1L-32N, 2L-32N, 2L-64N, 3L-64N and 3L-128N (where L = layers and N = neurons) with a ReLU activation function and SGD + SR update.
