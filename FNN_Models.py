@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import flax
 import flax.linen as nn
 from scipy.sparse.linalg import eigsh
+from scipy.ndimage import gaussian_filter1d
 from functools import partial
 
 from the_model import build_model
@@ -198,13 +199,45 @@ ax1.grid(True, alpha=0.3)
 
 # ----------------- Relative Energy Error ----------------------
 
+# Gaussian smoothing strength
+sigma = 20
+
 for model_name in model_names:
 
     data = results[model_name]
     iterations_plot = data["Energy"]["iters"]
     energy = data["Energy"]["Mean"]
+
     relative_error = np.abs((energy - e_gs) / e_gs)
-    ax2.semilogy(iterations_plot, relative_error, label=model_name)
+
+    # Avoid log10(0)
+    relative_error = np.maximum(relative_error, 1e-16)
+
+    # ----------------------------------------------------------
+    # Plot the original data faintly
+    # ----------------------------------------------------------
+
+    raw_line = ax2.semilogy(iterations_plot, relative_error, alpha=0.12, linewidth=0.8)[0]
+
+    # Use the same colour for the smoothed curve
+    color = raw_line.get_color()
+
+    # ----------------------------------------------------------
+    # Gaussian smoothing in log-space
+    # ----------------------------------------------------------
+
+    log_error = np.log10(relative_error)
+
+    smoothed_log_error = gaussian_filter1d(log_error, sigma=sigma)
+
+    # Convert back from log-space
+    smoothed_error = 10**smoothed_log_error
+
+    # ----------------------------------------------------------
+    # Plot the smoothed curve
+    # ----------------------------------------------------------
+
+    ax2.semilogy(iterations_plot, smoothed_error, color=color, linewidth=1.8, label=model_name)
 
 ax2.set_xlabel("Iteration")
 ax2.set_ylabel(r"Relative energy error $|E-E_{\mathrm{gs}}|/E_{\mathrm{gs}}$")
@@ -214,3 +247,4 @@ ax2.grid(True, alpha=0.3)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
+
