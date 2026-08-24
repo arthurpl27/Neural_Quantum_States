@@ -1,5 +1,3 @@
-import platform
-import json
 import time
 
 import netket as nk
@@ -8,12 +6,7 @@ import matplotlib.pyplot as plt
 
 import jax
 import jax.numpy as jnp
-
-import flax
 import flax.linen as nn
-
-from scipy.sparse.linalg import eigsh
-from functools import partial
 
 from the_model import build_model
 
@@ -48,65 +41,8 @@ psi_gs = model["psi_gs"]
 
 
 # ============================================================
-#                     FLAX VARIATIONAL MODELS
+#             FEED-FORWARD NEURAL NETWORK MODEL
 # ============================================================
-
-class MF(nn.Module):
-    """
-    Mean-field variational model.
-    """
-
-    @nn.compact
-    def __call__(self, x):
-        lam = self.param(
-            "lambda",
-            nn.initializers.normal(),
-            (hi.size,),
-            float
-        )
-
-        # Compute probabilities
-        p = nn.log_sigmoid(lam * x)
-
-        return 0.5 * jnp.sum(p, axis=-1)
-
-
-class Jastrow(nn.Module):
-    """
-    Jastrow variational model.
-    """
-
-    @nn.compact
-    def __call__(self, input_x):
-        n_sites = input_x.shape[-1]
-
-        J = self.param(
-            "J",
-            nn.initializers.normal(),
-            (n_sites, n_sites),
-            float
-        )
-
-        dtype = jax.numpy.promote_types(
-            J.dtype,
-            input_x.dtype
-        )
-
-        J = J.astype(dtype)
-        input_x = input_x.astype(dtype)
-
-        # Make J symmetric
-        J_symm = J.T + J
-
-        result = jnp.einsum(
-            "...i,ij,...j->...",
-            input_x,
-            J_symm,
-            input_x
-        )
-
-        return result
-
 
 class FeedForward(nn.Module):
     """
@@ -126,10 +62,10 @@ class FeedForward(nn.Module):
 
 
 # ============================================================
-#                  VMC LEARNING-RATE STUDY
+#                 VMC LEARNING-RATE STUDY
 # ============================================================
 
-print("================ VMC: Learning-Rate Study ================")
+print("================ VMC: Neural Network Study ================")
 
 start = time.time()
 
@@ -144,233 +80,189 @@ learning_rates = [
     0.001
 ]
 
-# Model constructors
-model_factories = {
-    "MF": MF,
-    "Jastrow": Jastrow,
-    "FNN": FeedForward
-}
-
-# Store all simulation results
-results = {
-    model_name: {}
-    for model_name in model_factories
-}
+# Dictionary for storing the results
+results = {}
 
 
 # ============================================================
-#                  RUN ALL VMC SIMULATIONS
+#                  RUN VMC FOR EACH LEARNING RATE
 # ============================================================
 
-for model_name, model_factory in model_factories.items():
+for eta in learning_rates:
 
-    print(f"\n================ {model_name} ================")
+    print(f"\nRunning Feed-Forward NN with eta = {eta}")
 
-    for eta in learning_rates:
+    # Create a separate sampler for each simulation
+    sampler = nk.sampler.MetropolisSampler(
+        hi,
+        nk.sampler.rules.LocalRule(),
+        n_chains=N_chains
+    )
 
-        print(
-            f"\nRunning model: {model_name} "
-            f"with learning rate eta = {eta}"
+    # Construct a new neural network for this learning rate
+    model_FFNN = FeedForward()
+
+    # Construct the variational state
+    vstate_FFNN = nk.vqs.MCState(
+        sampler,
+        model_FFNN,
+        n_samples=Length
+    )
+
+    # Initialize the neural-network parameters
+    vstate_FFNN.init_parameters()
+
+    # Construct the optimizer using the current learning rate
+    optimizer_FFNN = nk.optimizer.Sgd(
+        learning_rate=eta
+    )
+
+    # Construct the VMC driver
+    gs_FFNN = nk.driver.VMC(
+        hamiltonian,
+        optimizer_FFNN,
+        variational_state=vstate_FFNN,
+        preconditioner=nk.optimizer.SR(
+            diag_shift=0.1
         )
+    )
 
-        # Create an independent sampler for this simulation
-        sampler = nk.sampler.MetropolisSampler(
-            hi,
-            nk.sampler.rules.LocalRule(),
-            n_chains=N_chains
-        )
+    # Initialize the logger
+    log_FFNN = nk.logging.RuntimeLog()
 
-        # Construct the variational model
-        variational_model = model_factory()
+    # Run the VMC optimization
+    gs_FFNN.run(
+        n_iter=iterations,
+        out=log_FFNN
+    )
 
-        # Construct the variational state
-        vstate = nk.vqs.MCState(
-            sampler,
-            variational_model,
-            n_samples=Length
-        )
+    # Extract data from the logger
+    data_FFNN = log_FFNN.data
 
-        # Initialize model parameters
-        vstate.init_parameters()
+    iterations_data = np.asarray(
+        data_FFNN["Energy"].iters
+    )
 
-        # Construct the optimizer with the current learning rate
-        optimizer = nk.optimizer.Sgd(
-            learning_rate=eta
-        )
+    energy_mean = np.asarray(
+        data_FFNN["Energy"].Mean
+    )
 
-        # Construct the VMC driver
-        vmc = nk.driver.VMC(
-            hamiltonian,
-            optimizer,
-            variational_state=vstate,
-            preconditioner=nk.optimizer.SR(
-                diag_shift=0.1
-            )
-        )
+    energy_sigma = np.asarray(
+        data_FFNN["Energy"].Sigma
+    )
 
-        # Create a logger
-        logger = nk.logging.RuntimeLog()
+    # Calculate absolute and relative errors
+    absolute_error = np.abs(
+        energy_mean - e_gs[0]
+    )
 
-        # Run the VMC optimization
-        vmc.run(
-            n_iter=iterations,
-            out=logger
-        )
+    relative_error = absolute_error / np.abs(e_gs[0])
 
-        # Extract data from the logger
-        data = logger.data
+    # Store the results for this learning rate
+    results[eta] = {
+        "iterations": iterations_data,
+        "energy": energy_mean,
+        "sigma": energy_sigma,
+        "absolute_error": absolute_error,
+        "relative_error": relative_error
+    }
 
-        iterations_data = np.asarray(
-            data["Energy"].iters
-        )
-
-        energy_mean = np.asarray(
-            data["Energy"].Mean
-        )
-
-        energy_sigma = np.asarray(
-            data["Energy"].Sigma
-        )
-
-        # Calculate errors
-        absolute_error = np.abs(
-            energy_mean - e_gs[0]
-        )
-
-        relative_error = absolute_error / np.abs(e_gs[0])
-
-        # Store the results
-        results[model_name][eta] = {
-            "iterations": iterations_data,
-            "energy": energy_mean,
-            "sigma": energy_sigma,
-            "absolute_error": absolute_error,
-            "relative_error": relative_error
-        }
-
-        # Print final results for this simulation
-        print(
-            f"Final energy:       {energy_mean[-1]:.8f}"
-        )
-
-        print(
-            f"Absolute error:     {absolute_error[-1]:.8e}"
-        )
-
-        print(
-            f"Relative error:     {relative_error[-1]:.8e}"
-        )
+    # Print final results
+    print(f"Final energy:      {energy_mean[-1]:.8f}")
+    print(f"Absolute error:    {absolute_error[-1]:.8e}")
+    print(f"Relative error:    {relative_error[-1]:.8e}")
 
 
 # ============================================================
-#                         PLOTS
+#                          PLOTS
 # ============================================================
 
-# A small positive value avoids problems if an error becomes exactly zero
+# Avoid problems on a logarithmic scale if an error is exactly zero
 epsilon = 1e-16
 
-for model_name in model_factories:
+fig = plt.figure(figsize=(18, 5))
 
-    fig, axes = plt.subplots(
-        1,
-        3,
-        figsize=(18, 5)
+ax1 = fig.add_subplot(1, 3, 1)
+ax2 = fig.add_subplot(1, 3, 2)
+ax3 = fig.add_subplot(1, 3, 3)
+
+
+# ------------------- Energy -------------------
+
+for eta in learning_rates:
+
+    data = results[eta]
+
+    ax1.errorbar(
+        data["iterations"],
+        data["energy"],
+        yerr=data["sigma"],
+        label=rf"$\eta={eta}$",
+        alpha=0.8
     )
 
-    ax_energy = axes[0]
-    ax_absolute_error = axes[1]
-    ax_relative_error = axes[2]
+ax1.axhline(
+    y=e_gs[0],
+    color="green",
+    linestyle="--",
+    linewidth=1.5,
+    label="Ground-state energy"
+)
 
-    for eta in learning_rates:
+ax1.set_title("Feed-Forward NN: Energy")
+ax1.set_xlabel("Iterations")
+ax1.set_ylabel("Energy")
+ax1.grid(alpha=0.3)
+ax1.legend()
 
-        data = results[model_name][eta]
 
-        iterations_data = data["iterations"]
-        energy = data["energy"]
-        sigma = data["sigma"]
-        absolute_error = data["absolute_error"]
-        relative_error = data["relative_error"]
+# ------------------- Absolute Error -------------------
 
-        label = rf"$\eta={eta}$"
+for eta in learning_rates:
 
-        # ------------------- Energy -------------------
+    data = results[eta]
 
-        ax_energy.errorbar(
-            iterations_data,
-            energy,
-            yerr=sigma,
-            label=label,
-            alpha=0.8
-        )
-
-        # ------------------- Absolute Error -------------------
-
-        ax_absolute_error.semilogy(
-            iterations_data,
-            np.maximum(absolute_error, epsilon),
-            label=label
-        )
-
-        # ------------------- Relative Error -------------------
-
-        ax_relative_error.semilogy(
-            iterations_data,
-            np.maximum(relative_error, epsilon),
-            label=label
-        )
-
-    # Ground-state energy
-    ax_energy.axhline(
-        y=e_gs[0],
-        color="green",
-        linestyle="--",
-        linewidth=1.5,
-        label="Ground-state energy"
+    ax2.semilogy(
+        data["iterations"],
+        np.maximum(data["absolute_error"], epsilon),
+        label=rf"$\eta={eta}$"
     )
 
-    # ------------------- Energy Plot -------------------
+ax2.set_title("Feed-Forward NN: Absolute Energy Error")
+ax2.set_xlabel("Iterations")
+ax2.set_ylabel(r"$|E-E_{\mathrm{GS}}|$")
+ax2.grid(alpha=0.3)
+ax2.legend()
 
-    ax_energy.set_title(f"{model_name}: Energy")
-    ax_energy.set_xlabel("Iterations")
-    ax_energy.set_ylabel("Energy")
-    ax_energy.grid(alpha=0.3)
-    ax_energy.legend()
 
-    # ------------------- Absolute Error Plot -------------------
+# ------------------- Relative Error -------------------
 
-    ax_absolute_error.set_title(
-        f"{model_name}: Absolute Energy Error"
+for eta in learning_rates:
+
+    data = results[eta]
+
+    ax3.semilogy(
+        data["iterations"],
+        np.maximum(data["relative_error"], epsilon),
+        label=rf"$\eta={eta}$"
     )
 
-    ax_absolute_error.set_xlabel("Iterations")
-    ax_absolute_error.set_ylabel(
-        r"$|E-E_{\mathrm{GS}}|$"
-    )
+ax3.set_title("Feed-Forward NN: Relative Energy Error")
+ax3.set_xlabel("Iterations")
+ax3.set_ylabel(
+    r"$|E-E_{\mathrm{GS}}|/|E_{\mathrm{GS}}|$"
+)
+ax3.grid(alpha=0.3)
+ax3.legend()
 
-    ax_absolute_error.grid(alpha=0.3)
-    ax_absolute_error.legend()
 
-    # ------------------- Relative Error Plot -------------------
+fig.suptitle(
+    "Learning-Rate Study for the Feed-Forward Neural Network",
+    fontsize=14
+)
 
-    ax_relative_error.set_title(
-        f"{model_name}: Relative Energy Error"
-    )
-
-    ax_relative_error.set_xlabel("Iterations")
-    ax_relative_error.set_ylabel(
-        r"$|E-E_{\mathrm{GS}}|/|E_{\mathrm{GS}}|$"
-    )
-
-    ax_relative_error.grid(alpha=0.3)
-    ax_relative_error.legend()
-
-    fig.suptitle(
-        f"Learning-rate study for the {model_name} model",
-        fontsize=14
-    )
-
-    plt.tight_layout()
-    plt.show()
+plt.tight_layout()
+plt.show()
 
 
 # ============================================================
@@ -379,24 +271,20 @@ for model_name in model_factories:
 
 print("\n================ Final Results ================")
 
-for model_name in model_factories:
+for eta in learning_rates:
 
-    print(f"\n{model_name}:")
+    data = results[eta]
 
-    for eta in learning_rates:
+    final_energy = data["energy"][-1]
+    final_absolute_error = data["absolute_error"][-1]
+    final_relative_error = data["relative_error"][-1]
 
-        data = results[model_name][eta]
-
-        final_energy = data["energy"][-1]
-        final_absolute_error = data["absolute_error"][-1]
-        final_relative_error = data["relative_error"][-1]
-
-        print(
-            f"eta = {eta:<6} | "
-            f"Energy = {final_energy:.8f} | "
-            f"Absolute error = {final_absolute_error:.8e} | "
-            f"Relative error = {final_relative_error:.8e}"
-        )
+    print(
+        f"eta = {eta:<6} | "
+        f"Energy = {final_energy:.8f} | "
+        f"Absolute error = {final_absolute_error:.8e} | "
+        f"Relative error = {final_relative_error:.8e}"
+    )
 
 
 # ============================================================
@@ -412,3 +300,4 @@ print(
     "seconds"
 )
 print("----------------------------------------------")
+
