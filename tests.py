@@ -70,7 +70,7 @@ print("================ VMC: Neural Network Study ================")
 start = time.time()
 
 Length = 10000
-iterations = 300
+iterations = 2500
 
 learning_rates = [
     0.1,
@@ -151,25 +151,21 @@ for eta in learning_rates:
         data_FFNN["Energy"].Sigma
     )
 
-    # Calculate absolute and relative errors
-    absolute_error = np.abs(
+    # Calculate relative error
+    relative_error = np.abs(
         energy_mean - e_gs[0]
-    )
-
-    relative_error = absolute_error / np.abs(e_gs[0])
+    ) / np.abs(e_gs[0])
 
     # Store the results for this learning rate
     results[eta] = {
         "iterations": iterations_data,
         "energy": energy_mean,
         "sigma": energy_sigma,
-        "absolute_error": absolute_error,
         "relative_error": relative_error
     }
 
     # Print final results
     print(f"Final energy:      {energy_mean[-1]:.8f}")
-    print(f"Absolute error:    {absolute_error[-1]:.8e}")
     print(f"Relative error:    {relative_error[-1]:.8e}")
 
 
@@ -180,11 +176,10 @@ for eta in learning_rates:
 # Avoid problems on a logarithmic scale if an error is exactly zero
 epsilon = 1e-16
 
-fig = plt.figure(figsize=(18, 5))
+fig = plt.figure(figsize=(12, 5))
 
-ax1 = fig.add_subplot(1, 3, 1)
-ax2 = fig.add_subplot(1, 3, 2)
-ax3 = fig.add_subplot(1, 3, 3)
+ax1 = fig.add_subplot(1, 2, 1)
+ax2 = fig.add_subplot(1, 2, 2)
 
 
 # ------------------- Energy -------------------
@@ -216,7 +211,7 @@ ax1.grid(alpha=0.3)
 ax1.legend()
 
 
-# ------------------- Absolute Error -------------------
+# ------------------- Relative Error -------------------
 
 for eta in learning_rates:
 
@@ -224,36 +219,17 @@ for eta in learning_rates:
 
     ax2.semilogy(
         data["iterations"],
-        np.maximum(data["absolute_error"], epsilon),
-        label=rf"$\eta={eta}$"
-    )
-
-ax2.set_title("Feed-Forward NN: Absolute Energy Error")
-ax2.set_xlabel("Iterations")
-ax2.set_ylabel(r"$|E-E_{\mathrm{GS}}|$")
-ax2.grid(alpha=0.3)
-ax2.legend()
-
-
-# ------------------- Relative Error -------------------
-
-for eta in learning_rates:
-
-    data = results[eta]
-
-    ax3.semilogy(
-        data["iterations"],
         np.maximum(data["relative_error"], epsilon),
         label=rf"$\eta={eta}$"
     )
 
-ax3.set_title("Feed-Forward NN: Relative Energy Error")
-ax3.set_xlabel("Iterations")
-ax3.set_ylabel(
+ax2.set_title("Feed-Forward NN: Relative Energy Error")
+ax2.set_xlabel("Iterations")
+ax2.set_ylabel(
     r"$|E-E_{\mathrm{GS}}|/|E_{\mathrm{GS}}|$"
 )
-ax3.grid(alpha=0.3)
-ax3.legend()
+ax2.grid(alpha=0.3)
+ax2.legend()
 
 
 fig.suptitle(
@@ -276,13 +252,11 @@ for eta in learning_rates:
     data = results[eta]
 
     final_energy = data["energy"][-1]
-    final_absolute_error = data["absolute_error"][-1]
     final_relative_error = data["relative_error"][-1]
 
     print(
         f"eta = {eta:<6} | "
         f"Energy = {final_energy:.8f} | "
-        f"Absolute error = {final_absolute_error:.8e} | "
         f"Relative error = {final_relative_error:.8e}"
     )
 
